@@ -123,3 +123,18 @@ def test_capture(stripe_authorized_payment, sandbox_gateway_config):
     assert response.is_success
     assert isclose(response.amount, TRANSACTION_AMOUNT)
     assert response.currency == TRANSACTION_CURRENCY
+
+
+@pytest.mark.integration
+@pytest.mark.vcr(filter_headers=["authorization"])
+def test_capture_error_response(stripe_payment, sandbox_gateway_config):
+    INVALID_INTENT = "THIS_INTENT_DOES_NOT_EXISTS"
+    payment_info = create_payment_information(stripe_payment, INVALID_INTENT)
+    response = capture(payment_info, sandbox_gateway_config)
+
+    assert response.error == "No such payment_intent: " + INVALID_INTENT
+    assert response.transaction_id == INVALID_INTENT
+    assert response.kind == TransactionKind.CAPTURE
+    assert not response.is_success
+    assert response.amount == stripe_payment.total
+    assert response.currency == stripe_payment.currency

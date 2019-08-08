@@ -63,17 +63,29 @@ def authorize(
 
 def capture(payment_information: PaymentData, config: GatewayConfig) -> GatewayResponse:
     client = _get_client(**config.connection_params)
-    intent = client.PaymentIntent.retrieve(id=payment_information.token)
-    response = intent.capture()
-    return GatewayResponse(
-        is_success=response.status == "succeeded",
-        transaction_id=intent.id,
-        amount=get_amount_from_stripe(intent.amount, intent.currency),
-        currency=get_currency_from_stripe(intent.currency),
-        error=None,
-        kind=TransactionKind.CAPTURE,
-        raw_response=response,
-    )
+    try:
+        intent = client.PaymentIntent.retrieve(id=payment_information.token)
+        capture = intent.capture()
+        response = GatewayResponse(
+            is_success=capture.status == "succeeded",
+            transaction_id=intent.id,
+            amount=get_amount_from_stripe(intent.amount, intent.currency),
+            currency=get_currency_from_stripe(intent.currency),
+            error=None,
+            kind=TransactionKind.CAPTURE,
+            raw_response=capture,
+        )
+    except stripe.error.StripeError as exc:
+        response = GatewayResponse(
+            is_success=False,
+            transaction_id=payment_information.token,
+            amount=payment_information.amount,
+            currency=payment_information.currency,
+            error=exc.user_message,
+            kind=TransactionKind.CAPTURE,
+            raw_response=exc.json_body or {},
+        )
+    return response
 
 
 def refund(payment_information: PaymentData, config: GatewayConfig) -> GatewayResponse:
