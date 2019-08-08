@@ -38,9 +38,10 @@ def authorize(
             currency=currency,
             confirmation_method="manual",
             confirm=True,
+            capture_method="automatic" if config.auto_capture else "manual",
         )
         response = GatewayResponse(
-            is_success=intent.status == "succeeded",
+            is_success=intent.status in ("succeeded", "requires_capture"),
             transaction_id=intent.id,
             amount=get_amount_from_stripe(intent.amount, currency),
             currency=get_currency_from_stripe(intent.currency),
