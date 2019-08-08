@@ -25,28 +25,40 @@ def get_client_token(**_):
 def authorize(
     payment_information: PaymentData, config: GatewayConfig
 ) -> GatewayResponse:
+    error, intent = None, None
+    kind = TransactionKind.CAPTURE if config.auto_capture else TransactionKind.AUTH
     client = _get_client(**config.connection_params)
     currency = get_currency_for_stripe(payment_information.currency)
     stripe_amount = get_amount_for_stripe(payment_information.amount, currency)
 
-    intent = client.PaymentIntent.create(
-        payment_method=payment_information.token,
-        amount=stripe_amount,
-        currency=currency,
-        confirmation_method="manual",
-        confirm=True,
-    )
-
-    kind = TransactionKind.CAPTURE if config.auto_capture else TransactionKind.AUTH
-
-    return GatewayResponse(
-        is_success=intent.status == "succeeded",
-        transaction_id=intent.id,
-        amount=get_amount_from_stripe(intent.amount, currency),
-        currency=get_currency_from_stripe(intent.currency),
-        error="",
-        kind=kind,
-    )
+    try:
+        intent = client.PaymentIntent.create(
+            payment_method=payment_information.token,
+            amount=stripe_amount,
+            currency=currency,
+            confirmation_method="manual",
+            confirm=True,
+        )
+        response = GatewayResponse(
+            is_success=intent.status == "succeeded",
+            transaction_id=intent.id,
+            amount=get_amount_from_stripe(intent.amount, currency),
+            currency=get_currency_from_stripe(intent.currency),
+            error=None,
+            kind=kind,
+            raw_response=intent,
+        )
+    except stripe.error.StripeError as exc:
+        response = GatewayResponse(
+            is_success=False,
+            transaction_id=payment_information.token,
+            amount=payment_information.amount,
+            currency=payment_information.currency,
+            error=exc.user_message,
+            kind=kind,
+            raw_response=exc.json_body or {},
+        )
+    return response
 
 
 def capture(payment_information: PaymentData, config: GatewayConfig) -> GatewayResponse:
@@ -64,7 +76,7 @@ def void(payment_information: PaymentData, config: GatewayConfig) -> GatewayResp
 def process_payment(
     payment_information: PaymentData, config: GatewayConfig
 ) -> GatewayResponse:
-    pass
+    return authorize(payment_information, config)
 
 
 def create_form(

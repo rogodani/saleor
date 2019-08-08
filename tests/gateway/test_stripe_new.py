@@ -4,30 +4,17 @@ import os
 
 import pytest
 
-from saleor.payment.gateways.stripe.utils import (
-    get_amount_for_stripe,
-    get_currency_for_stripe,
-)
-from saleor.payment.gateways.stripe_new import (
-    TransactionKind,
-    authorize,
-    get_amount_for_stripe,
-    get_currency_for_stripe,
-)
-from saleor.payment.interface import (
-    CreditCardInfo,
-    CustomerSource,
-    GatewayConfig,
-    TokenConfig,
-)
+from saleor.payment.gateways.stripe_new import TransactionKind, authorize
+from saleor.payment.interface import GatewayConfig
 from saleor.payment.utils import create_payment_information
 
 TRANSACTION_AMOUNT = Decimal(42.42)
 TRANSACTION_REFUND_AMOUNT = Decimal(24.24)
 TRANSACTION_CURRENCY = "USD"
-TRANSACTION_TOKEN = "fake-stripe-id"
-FAKE_TOKEN = "pm_card_pl"
-ERROR_MESSAGE = "error-message"
+PAYMENT_METHOD_CARD_SIMPLE = "pm_card_pl"
+
+# Set to True if recording new cassette with sandbox using credentials in env
+RECORD = False
 
 
 @pytest.fixture()
@@ -52,18 +39,12 @@ def gateway_config():
 
 @pytest.fixture()
 def sandbox_gateway_config(gateway_config):
-    RECORD = (
-        False
-    )  # Set to True if recording new cassette with sandbox using credentials in env
-    connection_params = {
-        "public_key": os.environ.get("STRIPE_PUBLIC_KEY", "")
-        if RECORD
-        else "PUBLIC_KEY",
-        "secret_key": os.environ.get("STRIPE_SECRET_KEY", "")
-        if RECORD
-        else "SECRET_KEY",
-    }
-    gateway_config.connection_params.update(connection_params)
+    if RECORD:
+        connection_params = {
+            "public_key": os.environ.get("STRIPE_PUBLIC_KEY"),
+            "secret_key": os.environ.get("STRIPE_SECRET_KEY"),
+        }
+        gateway_config.connection_params.update(connection_params)
     return gateway_config
 
 
@@ -77,11 +58,27 @@ def stripe_payment(payment_dummy):
 @pytest.mark.integration
 @pytest.mark.vcr(filter_headers=["authorization"])
 def test_authorize(sandbox_gateway_config, stripe_payment):
-    payment = stripe_payment
-    payment_info = create_payment_information(payment, FAKE_TOKEN)
+    payment_info = create_payment_information(
+        stripe_payment, PAYMENT_METHOD_CARD_SIMPLE
+    )
     response = authorize(payment_info, sandbox_gateway_config)
     assert not response.error
     assert response.kind == TransactionKind.AUTH
     assert isclose(response.amount, TRANSACTION_AMOUNT)
     assert response.currency == TRANSACTION_CURRENCY
     assert response.is_success is True
+
+
+@pytest.mark.integration
+@pytest.mark.vcr(filter_headers=["authorization"])
+def test_authorize_error_response(stripe_payment, sandbox_gateway_config):
+    INVALID_METHOD = "abcdefghijklmnoprstquwz"
+    payment_info = create_payment_information(stripe_payment, INVALID_METHOD)
+    response = authorize(payment_info, sandbox_gateway_config)
+
+    assert response.error == "No such payment_method: " + INVALID_METHOD
+    assert response.transaction_id == INVALID_METHOD
+    assert response.kind == TransactionKind.AUTH
+    assert not response.is_success
+    assert response.amount == stripe_payment.total
+    assert response.currency == stripe_payment.currency
