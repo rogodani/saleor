@@ -25,7 +25,6 @@ def get_client_token(**_):
 def authorize(
     payment_information: PaymentData, config: GatewayConfig
 ) -> GatewayResponse:
-    error, intent = None, None
     kind = TransactionKind.CAPTURE if config.auto_capture else TransactionKind.AUTH
     client = _get_client(**config.connection_params)
     currency = get_currency_for_stripe(payment_information.currency)
@@ -63,7 +62,18 @@ def authorize(
 
 
 def capture(payment_information: PaymentData, config: GatewayConfig) -> GatewayResponse:
-    pass
+    client = _get_client(**config.connection_params)
+    intent = client.PaymentIntent.retrieve(id=payment_information.token)
+    response = intent.capture()
+    return GatewayResponse(
+        is_success=response.status == "succeeded",
+        transaction_id=intent.id,
+        amount=get_amount_from_stripe(intent.amount, intent.currency),
+        currency=get_currency_from_stripe(intent.currency),
+        error=None,
+        kind=TransactionKind.CAPTURE,
+        raw_response=response,
+    )
 
 
 def refund(payment_information: PaymentData, config: GatewayConfig) -> GatewayResponse:
