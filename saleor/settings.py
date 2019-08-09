@@ -41,6 +41,11 @@ ADMINS = (
 )
 MANAGERS = ADMINS
 
+# Url that can be used in requestPasswordReset mutations
+ALLOWED_DOMAINS_FOR_PASSWORD_RESET = [
+    # "www.example.com"
+]
+
 INTERNAL_IPS = get_list(os.environ.get("INTERNAL_IPS", "127.0.0.1"))
 
 # Some cloud providers (Heroku) export REDIS_URL variable instead of CACHE_URL

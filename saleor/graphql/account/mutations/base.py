@@ -1,4 +1,7 @@
+from urllib.parse import urlparse
+
 import graphene
+from django.conf import settings
 from django.contrib.auth import password_validation
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
@@ -95,7 +98,6 @@ class RequestPasswordReset(BaseMutation):
             required=True,
             description="Email of the user that will be used for password recovery.",
         )
-        # TODO: Add description of storefronts whitelist in settings
         redirect_url = graphene.String(
             required=True,
             description=(
@@ -111,6 +113,15 @@ class RequestPasswordReset(BaseMutation):
     def perform_mutation(cls, _root, info, **data):
         email = data["email"]
         redirect_url = data["redirect_url"]
+
+        parsed_url = urlparse(redirect_url)
+        if parsed_url.netloc not in settings.ALLOWED_DOMAINS_FOR_PASSWORD_RESET:
+            raise ValidationError(
+                {
+                    "redirectUrl": "%s this domain is not allowed for password reset."
+                    % parsed_url.netloc
+                }
+            )
         try:
             user = models.User.objects.get(email=email)
         except ObjectDoesNotExist:
